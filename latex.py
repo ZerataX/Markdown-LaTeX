@@ -109,7 +109,7 @@ class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
         tmp_file.close()
 
         # compile LaTeX document. A DVI file is created
-        status = call(('latex -halt-on-error %s' % path).split(), stdout=PIPE)
+        status = call(('pdflatex -output-format=dvi -interaction=nonstopmode  -output-directory={:s} {:s}'
 
         # clean up if the above failed
         if status:
