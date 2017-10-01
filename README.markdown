@@ -1,5 +1,5 @@
 # Markdown-LaTeX
-This [Markdown](http://daringfireball.net/projects/markdown/) extension adds support for inline LaTeX expressions without the need for external images.
+This [Markdown](https://pypi.python.org/pypi/Markdown) extension adds support for inline LaTeX expressions without the need for external images.
 The available modes are %TEXT%, $MATH$, and %%PREAMBLE%%.
 
 ## Modes
@@ -18,6 +18,7 @@ Preamble mode is the only "complex" mode. It allows you to add to the preamble o
 Markdown-LaTeX depends on:
 
 - [LaTeX](http://www.latex-project.org/)
+- [dvisvgm](https://github.com/mgieseki/dvisvgm)
 - [dvipng](http://sourceforge.net/projects/dvipng/)
 - [Python Markdown](http://www.freewisdom.org/projects/python-markdown/)
 
@@ -29,21 +30,29 @@ You can either copy it into the extensions sub-directory in your markdown folder
 
 ## Configuration
 
-This plugin uses dvipng in order to produce the output images. The arguments
-passed to dvipng are configurable, see tests/markdown-latex.cfg for an example.
+This plugin uses dvipng or dvisvgm in order to produce the output images. The arguments
+passed to dvipng/dvisvgm are configurable, see (tests/markdown-latex.cfg)[tests/markdown-latex.cfg] for an example.
 In particular, you may want to adapt the argument passed to the -D option in
-order to change output resolution resp. font size.
+order to change output resolution resp. font size, if you use dvipng.
+
+You can change between dvipng and dvisvgm in you markdown-latex.cfg under the [general] section, the default is dvisvgm.
+```
+[general]
+mode = png
+```
 
 You may also change the delimiters used for text, math and preamble mode within
-the configuration file, see tests2/markdown-latex.cfg. When running this plugin
+the configuration file, see (tests2/markdown-latex.cfg)[tests2/markdown-latex.cfg]. When running this plugin
 on existing text you need to escape all occurrences of % and $. Changing
 delimiters may reduce this effort.
+
+
 
 
 ----
 
 ## How does it work?
-The LaTeX extension will search for either $text$ or %text% expressions. For each expression, it generates a tex file that is parsed by latex and then run through dvipng. The data is encoded via base64 and then inlined.  A cache file (latex.cache) is used to store all expressions and their base64 counterparts. This is to prevent latex from being run each time.
+The LaTeX extension will search for either $text$ or %text% expressions. For each expression, it generates a tex file that is parsed by latex and then run through dvipng/dvisvgm. The data is encoded via base64 and then inlined.  A cache file (latex.cache) is used to store all expressions and their base64 counterparts. This is to prevent latex from being run each time.
 
 ----
 
