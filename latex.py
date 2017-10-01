@@ -102,6 +102,7 @@ class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
         tmp_file_fd, path = tempfile.mkstemp()
         tmp_file = os.fdopen(tmp_file_fd, "w")
         tmp_file.write(self.tex_preamble)
+        dir = os.path.dirname(path)
 
         # Figure out the mode that we're in
         if math_mode:
@@ -113,10 +114,11 @@ class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
         tmp_file.close()
 
         # compile LaTeX document. A DVI file is created
-        status = call(('latex -halt-on-error %s' % path).split(), stdout=PIPE)
+        status = call(('pdflatex -output-format=dvi -interaction=nonstopmode  -output-directory=%s %s' % (dir, path)).split(), stdout=PIPE)
 
         # clean up if the above failed
         if status:
+            print(status)
             self._cleanup(path, err=True)
             raise Exception("Couldn't compile LaTeX document." +
                 "Please read '%s.log' for more detail." % path)
@@ -132,6 +134,7 @@ class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
 
         # clean up if we couldn't make the above work
         if status:
+            print(status)
             self._cleanup(path, err=True)
             raise Exception("Couldn't convert LaTeX to image." +
                     "Please read '%s.log' for more detail." % path)
