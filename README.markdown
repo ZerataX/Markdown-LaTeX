@@ -23,7 +23,7 @@ Markdown-LaTeX depends on:
 - [Python Markdown](http://www.freewisdom.org/projects/python-markdown/)
 
 ## Installation
-You can either copy it into the extensions sub-directory in your markdown folder (ex: /usr/lib/python2.7/site-packages/markdown/extensions/latex.py) or use it locally with the mdx_ prefix. See [Markdown Extensions](http://www.freewisdom.org/projects/python-markdown/Writing_Extensions) for more details.
+You can either copy it into the extensions sub-directory in your markdown folder (ex: /usr/lib/python2.7/site-packages/markdown/extensions/latex.py) or use it locally with the mdx_ prefix. See [Markdown Extensions](https://pythonhosted.org/Markdown/extensions/index.html) for more details.
 
 ## Usage
     markdown -x latex somefile.markdown > somefile.html
@@ -31,7 +31,7 @@ You can either copy it into the extensions sub-directory in your markdown folder
 ## Configuration
 
 This plugin uses dvipng or dvisvgm in order to produce the output images. The arguments
-passed to dvipng/dvisvgm are configurable, see (tests/markdown-latex.cfg)[tests/markdown-latex.cfg] for an example.
+passed to dvipng/dvisvgm are configurable, see [tests/markdown-latex.cfg](tests/markdown-latex.cfg) for an example.
 In particular, you may want to adapt the argument passed to the -D option in
 order to change output resolution resp. font size, if you use dvipng.
 
@@ -42,7 +42,7 @@ mode = png
 ```
 
 You may also change the delimiters used for text, math and preamble mode within
-the configuration file, see (tests2/markdown-latex.cfg)[tests2/markdown-latex.cfg]. When running this plugin
+the configuration file, see [tests2/markdown-latex.cfg](tests2/markdown-latex.cfg). When running this plugin
 on existing text you need to escape all occurrences of % and $. Changing
 delimiters may reduce this effort.
 
