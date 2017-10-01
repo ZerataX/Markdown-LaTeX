@@ -28,9 +28,10 @@ from subprocess import call, PIPE
 
 
 # Defines our basic inline image
-IMG_EXPR = "<img class='latex-inline math-%s' alt='%s' id='%s'" + \
+IMG_PNG_EXPR = "<img class='latex-inline math-%s' alt='%s' id='%s'" + \
         " src='data:image/png;base64,%s'>"
-
+IMG_SVG_EXPR = "<img class='latex-inline math-%s' alt='%s' id='%s'" + \
+" src='data:image/svg+xml;base64,%s'>"
 
 # Base CSS template
 IMG_CSS = "<style scoped>img.latex-inline { vertical-align: middle; }</style>\n"
@@ -61,7 +62,9 @@ class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
 
         self.config = {}
         self.config[("general", "preamble")] = ""
+        self.config[("general", "mode")] = "svg"
         self.config[("dvipng", "args")] = "-q -T tight -bg Transparent -z 9 -D 106"
+        self.config[("dvisvg", "args")] = "-n"
         self.config[("delimiters", "text")] = "%"
         self.config[("delimiters", "math")] = "$"
         self.config[("delimiters", "preamble")] = "%%"
@@ -93,10 +96,12 @@ class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
         # %%PREAMBLE%% text that modifys the LaTeX preamble for the document
         self.re_preamblemode = build_regexp(self.config[("delimiters", "preamble")])
 
+
     """The TeX preprocessor has to run prior to all the actual processing
-    and can not be parsed in block mode very sanely."""
-    def _latex_to_base64(self, tex, math_mode):
-        """Generates a base64 representation of TeX string"""
+        and can not be parsed in block mode very sanely."""
+    def _compile_latex(self, tex, math_mode):
+        """compiles a latex file"""
+
         # Generate the temporary file
         tempfile.tempdir = ""
         tmp_file_fd, path = tempfile.mkstemp()
@@ -122,6 +127,12 @@ class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
             self._cleanup(path, err=True)
             raise Exception("Couldn't compile LaTeX document." +
                 "Please read '%s.log' for more detail." % path)
+        return path
+
+
+    def _latex_to_png_base64(self, tex, math_mode):
+        """Generates a base64 representation of TeX string"""
+        path = self._compile_latex(tex, math_mode)
 
         # Run dvipng on the generated DVI file. Use tight bounding box.
         # Magnification is set to 1200
@@ -149,9 +160,42 @@ class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
 
         return data
 
+
+    def _latex_to_svg_base64(self, tex, math_mode):
+        """Generates a base64 representation of TeX string"""
+        path = self._compile_latex(tex, math_mode)
+
+        # Run dvipng on the generated DVI file. Use tight bounding box.
+        # Magnification is set to 1200
+        dvi = "%s.dvi" % path
+        svg = "%s.svg" % path
+
+        # Extract the image
+        cmd = "dvisvgm %s %s -o %s" % (self.config[("dvisvg", "args")], dvi, svg)
+        status = call(cmd.split(), stdout=PIPE)
+
+        # clean up if we couldn't make the above work
+        if status:
+            print(status)
+            self._cleanup(path, err=True)
+            raise Exception("Couldn't convert LaTeX to image." +
+                    "Please read '%s.log' for more detail." % path)
+
+        # Read the png and encode the data
+        svg = open(svg, "rb")
+        data = svg.read()
+        data = base64.b64encode(data)
+        svg.close()
+
+
+        self._cleanup(path)
+
+        return data
+
+
     def _cleanup(self, path, err=False):
         # don't clean up the log if there's an error
-        extensions = ["", ".aux", ".dvi", ".png", ".log"]
+        extensions = ["", ".aux", ".dvi", ".png", ".svg", ".log"]
         if err:
             extensions.pop()
 
@@ -191,17 +235,33 @@ class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
                 simp_expr = filter(unicode.isalnum, expr)
             except NameError:
                 simp_expr = ''.join(list(filter(str.isalnum, expr)))
-                print(simp_expr)
-            if expr in self.cached:
-                data = self.cached[simp_expr]
+
+            if self.config[("general", "mode")] == "png":
+                if expr in self.cached:
+                    data = self.cached[simp_expr]
+                else:
+                    data = self._latex_to_png_base64(expr, math_mode)
+                    data = "".join(str(data)[1:]).replace("'", "")
+                    new_cache[simp_expr] = data
+                id += 1
+                page = reg.sub(IMG_PNG_EXPR %
+                        (str(math_mode).lower(), expr,
+                            simp_expr[:15] + "_" + str(id), data), page, 1)
+            elif self.config[("general", "mode")] == "svg":
+                if expr in self.cached:
+                    data = self.cached[simp_expr]
+                else:
+                    data = self._latex_to_svg_base64(expr, math_mode)
+                    data = "".join(str(data)[1:]).replace("'", "")
+                    new_cache[simp_expr] = data
+                id += 1
+                page = reg.sub(IMG_SVG_EXPR %
+                        (str(math_mode).lower(), expr,
+                            simp_expr[:15] + "_" + str(id), data), page, 1)
             else:
-                data = self._latex_to_base64(expr, math_mode)
-                data = "".join(str(data)[1:]).replace("'", "")
-                new_cache[simp_expr] = data
-            id += 1
-            page = reg.sub(IMG_EXPR %
-                    (str(math_mode).lower(), expr,
-                        simp_expr[:15] + "_" + str(id), data), page, 1)
+                raise Exception('This mode is not definied, ' +
+                                'please choose between "svg" and "png"')
+
 
         # Perform the escaping of delimiters and the backslash per se
         tokens = []
