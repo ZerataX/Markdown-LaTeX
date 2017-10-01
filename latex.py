@@ -67,7 +67,11 @@ class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
         self.config[("delimiters", "preamble")] = "%%"
 
         try:
-            import ConfigParser
+            try:
+                import ConfigParser
+            except ImportError:
+                # Python 3
+                import configparser as ConfigParser
             cfgfile = ConfigParser.RawConfigParser()
             cfgfile.read('markdown-latex.cfg')
 
@@ -182,6 +186,11 @@ class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
         for reg, math_mode, expr in tex_expr:
             simp_expr = filter(unicode.isalnum, expr)
             if simp_expr in self.cached:
+            try:
+                simp_expr = filter(unicode.isalnum, expr)
+            except NameError:
+                simp_expr = ''.join(list(filter(str.isalnum, expr)))
+                print(simp_expr)
                 data = self.cached[simp_expr]
             else:
                 data = self._latex_to_base64(expr, math_mode)
