@@ -201,7 +201,7 @@ class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
             id += 1
             page = reg.sub(IMG_EXPR %
                     (str(math_mode).lower(), expr,
-                        expr[:15] + "_" + str(id), data), page, 1)
+                        simp_expr[:15] + "_" + str(id), data), page, 1)
 
         # Perform the escaping of delimiters and the backslash per se
         tokens = []
