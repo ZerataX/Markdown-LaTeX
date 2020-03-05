@@ -20,10 +20,10 @@ Markdown-LaTeX depends on:
 - [LaTeX](http://www.latex-project.org/)
 - [dvisvgm](https://github.com/mgieseki/dvisvgm)
 - [dvipng](http://sourceforge.net/projects/dvipng/)
-- [Python Markdown](http://www.freewisdom.org/projects/python-markdown/)
+- [Python Markdown](https://pypi.org/project/Markdown/)
 
 ## Installation
-You can either copy it into the extensions sub-directory in your markdown folder (ex: /usr/lib/python2.7/site-packages/markdown/extensions/latex.py) or use it locally with the mdx_ prefix. See [Markdown Extensions](https://pythonhosted.org/Markdown/extensions/index.html) for more details.
+You can either copy it into the extensions sub-directory in your markdown folder (ex: /usr/lib/python2.7/site-packages/markdown/extensions/latex.py) or use it locally with the mdx_ prefix. See [Markdown Extensions](https://python-markdown.github.io/extensions/api/) for more details.
 
 ## Usage
     markdown -x latex somefile.markdown > somefile.html

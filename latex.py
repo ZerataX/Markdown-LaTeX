@@ -1,5 +1,5 @@
 """
-Licensed under Public Domain Mark 1.0. 
+Licensed under Public Domain Mark 1.0.
 See http://creativecommons.org/publicdomain/mark/1.0/
 Author: Justin Bruce Van Horne <justinvh@gmail.com>
 """
@@ -63,7 +63,7 @@ _CACHEFILE = _TEMPDIR + '/latex.cache'
 
 class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
     # These are our cached expressions that are stored in latex.cache
-    cached = {}
+    cached = {"png":{}, "svg":{}}
 
     # Basic LaTex Setup as well as our list of expressions to parse
     tex_preamble = r"""\documentclass{article}
@@ -81,8 +81,12 @@ class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
         try:
             cache_file = open(_CACHEFILE, 'r+')
             for line in cache_file.readlines():
-                key, val = line.strip("\n").split(" ")
-                self.cached[key] = val
+                try:
+                    key, mode, val = line.strip("\n").split(" ")
+                    self.cached[mode][key] = val
+                except ValueError:
+                    key, val = line.strip("\n").split(" ")
+                    self.cached["png"][key] = val
         except IOError:
             pass
 
@@ -90,7 +94,7 @@ class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
         self.config[("general", "preamble")] = ""
         self.config[("general", "mode")] = "svg"
         self.config[("dvipng", "args")] = "-q -T tight -bg Transparent -z 9 -D 106"
-        self.config[("dvisvg", "args")] = "-n"
+        self.config[("dvisvgm", "args")] = "-n"
         self.config[("delimiters", "text")] = "%"
         self.config[("delimiters", "math")] = "$"
         self.config[("delimiters", "preamble")] = "%%"
@@ -100,7 +104,7 @@ class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
             # Import it in a way that works across versions,
             # using the Python3 naming convention in the rest of the code.
             try:
-                import ConfigParser
+                import configparser
             except ImportError:
                 import ConfigParser as configparser
             cfgfile = configparser.RawConfigParser()
@@ -159,17 +163,24 @@ class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
         return path
 
 
-    def _latex_to_png_base64(self, tex, math_mode):
+    def _latex_to_base64(self, tex, math_mode):
         """Generates a base64 representation of TeX string"""
         path = self._compile_latex(tex, math_mode)
+        mode = self.config[("general", "mode")]
 
         # Run dvipng on the generated DVI file. Use tight bounding box.
         # Magnification is set to 1200
         dvi = "%s.dvi" % path
-        png = "%s.png" % path
+        output = "%s.%s" % (path, mode)
 
         # Extract the image
-        cmd = "dvipng %s %s -o %s" % (self.config[("dvipng", "args")], dvi, png)
+        if mode == "png":
+            cmd = "dvipng %s %s -o %s" % (self.config[("dvipng", "args")], dvi, output)
+        elif mode == "svg":
+            cmd = "dvisvgm %s %s -o %s" % (self.config[("dvisvgm", "args")], dvi, output)
+        else:
+            raise Exception('This mode ("' + mode + '") is not definied, ' +
+                            'please choose between "svg" and "png"')
         status = call(cmd.split(), stdout=PIPE)
 
         # clean up if we couldn't make the above work
@@ -180,47 +191,14 @@ class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
                     "Please read '%s.log' for more detail." % path)
 
         # Read the png and encode the data
-        png = open(png, "rb")
-        data = png.read()
+        output = open(output, "rb")
+        data = output.read()
         data = base64.b64encode(data)
-        png.close()
+        output.close()
 
         self._cleanup(path)
 
         return data
-
-
-    def _latex_to_svg_base64(self, tex, math_mode):
-        """Generates a base64 representation of TeX string"""
-        path = self._compile_latex(tex, math_mode)
-
-        # Run dvipng on the generated DVI file. Use tight bounding box.
-        # Magnification is set to 1200
-        dvi = "%s.dvi" % path
-        svg = "%s.svg" % path
-
-        # Extract the image
-        cmd = "dvisvgm %s %s -o %s" % (self.config[("dvisvg", "args")], dvi, svg)
-        status = call(cmd.split(), stdout=PIPE)
-
-        # clean up if we couldn't make the above work
-        if status:
-            print(status)
-            self._cleanup(path, err=True)
-            raise Exception("Couldn't convert LaTeX to image." +
-                    "Please read '%s.log' for more detail." % path)
-
-        # Read the png and encode the data
-        svg = open(svg, "rb")
-        data = svg.read()
-        data = base64.b64encode(data)
-        svg.close()
-
-
-        self._cleanup(path)
-
-        return data
-
 
     def _cleanup(self, path, err=False):
         # don't clean up the log if there's an error
@@ -257,36 +235,29 @@ class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
             return page.split("\n")
 
         # Parse the expressions
-        new_cache = {}
+        new_cache = {"png":{}, "svg":{}}
+        mode = self.config[("general", "mode")]
         id = 0
         for reg, math_mode, expr in tex_expr:
             simp_expr = ''.join(list(filter(isalnum, expr)))
 
-            if self.config[("general", "mode")] == "png":
-                if simp_expr in self.cached:
-                    data = self.cached[simp_expr]
-                else:
-                    data = self._latex_to_png_base64(expr, math_mode).decode()
-                    new_cache[simp_expr] = data
-                expr = expr.replace('"', "").replace("'", "")
-                id += 1
-                page = reg.sub(IMG_PNG_EXPR %
-                        (str(math_mode).lower(), expr,
-                            simp_expr[:15] + "_" + str(id), data), page, 1)
-            elif self.config[("general", "mode")] == "svg":
-                if simp_expr in self.cached:
-                    data = self.cached[simp_expr]
-                else:
-                    data = self._latex_to_svg_base64(expr, math_mode).decode()
-                    new_cache[simp_expr] = data
-                expr = expr.replace('"', "").replace("'", "")
-                id += 1
-                page = reg.sub(IMG_SVG_EXPR %
-                        (str(math_mode).lower(), expr,
-                            simp_expr[:15] + "_" + str(id), data), page, 1)
+            if simp_expr in self.cached[mode]:
+                data = self.cached[mode][simp_expr]
             else:
-                raise Exception('This mode is not definied, ' +
+                data = self._latex_to_base64(expr, math_mode).decode()
+                new_cache[mode][simp_expr] = data
+            expr = expr.replace('"', "").replace("'", "")
+            id += 1
+            if mode == "png":
+                IMG_EXPR = IMG_PNG_EXPR
+            elif mode == "svg":
+                IMG_EXPR = IMG_SVG_EXPR
+            else:
+                raise Exception('This mode ("' + mode + '") is not definied, ' +
                                 'please choose between "svg" and "png"')
+            page = reg.sub(IMG_EXPR %
+                    (str(math_mode).lower(), simp_expr,
+                        simp_expr[:15] + "_" + str(id), data), page, 1)
 
         # Perform the escaping of delimiters and the backslash per se
         tokens = []
@@ -299,8 +270,9 @@ class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
 
         # Cache our data
         cache_file = open(_CACHEFILE, 'a')
-        for key, value in new_cache.items():
-            cache_file.write("%s %s\n" % (key, value))
+        for mode, values in new_cache.items():
+            for key, value in values.items():
+                cache_file.write("%s %s %s\n" % (key, mode, value))
         cache_file.close()
 
         # Make sure to resplit the lines
