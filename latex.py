@@ -16,6 +16,7 @@ It encodes data as base64 so there is no need for images directly.
 All the work is done in the preprocessor.
 """
 
+from sys import version
 import re
 import os
 import string
@@ -24,7 +25,25 @@ import tempfile
 import markdown
 
 
-from subprocess import call, PIPE
+from subprocess import call as rawcall, PIPE
+
+
+
+# Proxies to existing functions for conserving compatibility between
+# Python2 and Python3
+def isalnum(expr):
+	'''Proxy to expr.isalnum() that can be used by filter()'''
+	return expr.isalnum()
+
+def call(*args, **kwargs):
+    '''
+    Proxy to subprocess.call(), removes timeout argument in case of
+    Python2 because that was only implemented in Python3.
+    '''
+    if 'timeout' in kwargs and version[0] == '2':
+        del kwargs['timeout']
+    rawcall(*args, **kwargs)
+
 
 
 # Defines our basic inline image
@@ -34,8 +53,13 @@ IMG_SVG_EXPR = "<img class='latex-inline math-%s' alt='%s' id='%s'" + \
 " src='data:image/svg+xml;base64,%s'>"
 
 # Base CSS template
-IMG_CSS = "<style scoped>img.latex-inline { vertical-align: middle; }</style>\n"
+IMG_CSS = \
+        "<style scoped>img.latex-inline { vertical-align: middle; }</style>\n"
 
+
+# Cache and temp file paths
+_TEMPDIR = tempfile.gettempdir() + '/markdown-latex'
+_CACHEFILE = _TEMPDIR + '/latex.cache'
 
 class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
     # These are our cached expressions that are stored in latex.cache
@@ -52,8 +76,10 @@ class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
 """
 
     def __init__(self, configs):
+        if not os.path.isdir(_TEMPDIR):
+            os.makedirs(_TEMPDIR)
         try:
-            cache_file = open('latex.cache', 'r+')
+            cache_file = open(_CACHEFILE, 'r+')
             for line in cache_file.readlines():
                 key, val = line.strip("\n").split(" ")
                 self.cached[key] = val
@@ -70,18 +96,20 @@ class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
         self.config[("delimiters", "preamble")] = "%%"
 
         try:
+            # ConfigParser was renamed to configparser in Python3.
+            # Import it in a way that works across versions,
+            # using the Python3 naming convention in the rest of the code.
             try:
                 import ConfigParser
             except ImportError:
-                # Python 3
-                import configparser as ConfigParser
-            cfgfile = ConfigParser.RawConfigParser()
+                import ConfigParser as configparser
+            cfgfile = configparser.RawConfigParser()
             cfgfile.read('markdown-latex.cfg')
 
             for sec in cfgfile.sections():
                 for opt in cfgfile.options(sec):
                     self.config[(sec, opt)] = cfgfile.get(sec, opt)
-        except ConfigParser.NoSectionError:
+        except configparser.NoSectionError:
             pass
 
         def build_regexp(delim):
@@ -103,8 +131,7 @@ class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
         """compiles a latex file"""
 
         # Generate the temporary file
-        tempfile.tempdir = ""
-        tmp_file_fd, path = tempfile.mkstemp()
+        tmp_file_fd, path = tempfile.mkstemp(dir=_TEMPDIR)
         tmp_file = os.fdopen(tmp_file_fd, "w")
         tmp_file.write(self.tex_preamble)
         dir = os.path.dirname(path)
@@ -119,7 +146,9 @@ class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
         tmp_file.close()
 
         # compile LaTeX document. A DVI file is created
-        status = call(('pdflatex -output-format=dvi -interaction=nonstopmode  -output-directory=%s %s' % (dir, path)).split(), stdout=PIPE)
+        status = call(('latex -halt-on-error -output-directory={:s} {:s}'
+                .format(_TEMPDIR, path)).split(),
+                stdout=PIPE, timeout=10)
 
         # clean up if the above failed
         if status:
@@ -231,29 +260,26 @@ class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
         new_cache = {}
         id = 0
         for reg, math_mode, expr in tex_expr:
-            try:
-                simp_expr = filter(unicode.isalnum, expr)
-            except NameError:
-                simp_expr = ''.join(list(filter(str.isalnum, expr)))
+            simp_expr = ''.join(list(filter(isalnum, expr)))
 
             if self.config[("general", "mode")] == "png":
-                if expr in self.cached:
+                if simp_expr in self.cached:
                     data = self.cached[simp_expr]
                 else:
-                    data = self._latex_to_png_base64(expr, math_mode)
-                    data = "".join(str(data)[1:]).replace("'", "")
+                    data = self._latex_to_png_base64(expr, math_mode).decode()
                     new_cache[simp_expr] = data
+                expr = expr.replace('"', "").replace("'", "")
                 id += 1
                 page = reg.sub(IMG_PNG_EXPR %
                         (str(math_mode).lower(), expr,
                             simp_expr[:15] + "_" + str(id), data), page, 1)
             elif self.config[("general", "mode")] == "svg":
-                if expr in self.cached:
+                if simp_expr in self.cached:
                     data = self.cached[simp_expr]
                 else:
-                    data = self._latex_to_svg_base64(expr, math_mode)
-                    data = "".join(str(data)[1:]).replace("'", "")
+                    data = self._latex_to_svg_base64(expr, math_mode).decode()
                     new_cache[simp_expr] = data
+                expr = expr.replace('"', "").replace("'", "")
                 id += 1
                 page = reg.sub(IMG_SVG_EXPR %
                         (str(math_mode).lower(), expr,
@@ -261,7 +287,6 @@ class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
             else:
                 raise Exception('This mode is not definied, ' +
                                 'please choose between "svg" and "png"')
-
 
         # Perform the escaping of delimiters and the backslash per se
         tokens = []
@@ -273,7 +298,7 @@ class LaTeXPreprocessor(markdown.preprocessors.Preprocessor):
             page = page.replace('\\' + tok, tok)
 
         # Cache our data
-        cache_file = open('latex.cache', 'a')
+        cache_file = open(_CACHEFILE, 'a')
         for key, value in new_cache.items():
             cache_file.write("%s %s\n" % (key, value))
         cache_file.close()
